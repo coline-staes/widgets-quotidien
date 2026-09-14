@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Widgets du quotidien</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;600&family=JetBrains+Mono&display=swap">
+<style>
+:root{--ground:#F6F7F4;--ink:#1E2420;--muted:#69726B;--line:#E0E5DF;--surface:#fff;--accent:#2E7A54}
+@media (prefers-color-scheme: dark){:root{--ground:#191B19;--ink:#E7EBE6;--muted:#949C95;--line:#323733;--surface:#202321;--accent:#5DBE8A}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 "Instrument Sans",system-ui,sans-serif;padding-inline:16px;padding-block:40px}
+main{max-width:640px;margin:0 auto;display:grid;gap:20px}
+h1{font:700 34px/1.1 "Bricolage Grotesque",system-ui,sans-serif;margin:0}
+p{margin:0;color:var(--muted)}
+a.w{display:block;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:inherit;text-decoration:none}
+a.w:hover{border-color:var(--accent)}
+a.w b{display:block;font-size:17px}
+code{font:13px "JetBrains Mono",Consolas,monospace;color:var(--accent);overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+  <h1>Widgets du quotidien</h1>
+  <p>Copie l'adresse d'un widget, puis dans Notion tape <code>/embed</code> et colle-la.</p>
+  <a class="w" href="habitudes.html"><b>Mes habitudes</b><code>habitudes.html</code></a>
+  <a class="w" href="budget.html"><b>Budget du mois</b><code>budget.html</code></a>
+  <p>Tes saisies restent dans le navigateur de l'appareil utilisé.</p>
+</main>
+</body>
+</html>
