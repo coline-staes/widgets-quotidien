@@ -67,7 +67,7 @@ h1{font-family:var(--display);font-weight:700;font-size:24px;line-height:1.1;mar
 svg{display:block;max-height:250px}
 svg text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
 
-.envs{display:grid;gap:8px;max-height:252px;overflow-y:auto}
+.envs{display:grid;gap:8px;max-height:224px;overflow-y:auto}
 .env{display:grid;grid-template-columns:minmax(84px,1.1fr) 1.5fr auto auto auto;gap:8px;align-items:center}
 .env .nm{min-width:0;padding:3px 6px;border:1px solid transparent;border-radius:6px;background:transparent;font-weight:500}
 .env .nm:hover{border-color:var(--line)}
@@ -80,9 +80,16 @@ svg text{font-family:var(--mono);font-size:11px;fill:var(--muted)}
 .env .amt input:hover{border-color:var(--line)}
 .env .amt input:focus{border-color:var(--accent);background:var(--surface);outline:none}
 .env.bad .spent{color:var(--bad);font-weight:600}
+.env.orphan .nm{color:var(--muted);font-style:italic}
 .fix{padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:transparent;font-size:11px;color:var(--muted);cursor:pointer;white-space:nowrap}
 .fix[aria-pressed="true"]{background:var(--soft);border-color:transparent;color:var(--accent);font-weight:600}
 @media (max-width:520px){.env{grid-template-columns:1fr auto auto auto}.env .gauge{grid-column:1/-1;grid-row:2}}
+
+.ask{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:4px 8px;border-radius:8px;background:var(--soft);font-size:12.5px}
+.ask .txt{flex:1 1 auto;min-width:0}
+.mini{padding:2px 10px;border-radius:999px;border:0;font-size:12px;font-weight:600;cursor:pointer;background:var(--bad);color:#fff}
+.mini.no{background:transparent;color:var(--muted);border:1px solid var(--line)}
+.ask.info .mini{background:var(--accent)}
 
 form.add{display:grid;gap:6px;margin-top:10px}
 form.add.dep{grid-template-columns:2fr 1fr 1.3fr 1.25fr auto auto}
@@ -96,6 +103,7 @@ form.add input,form.add select{min-width:0;padding:6px 8px;border-radius:8px;bor
 .day input{width:100%;min-width:0;text-align:center}
 .err{color:var(--bad);font-size:12px;margin-top:4px}
 .note{font-size:11px;color:var(--muted);margin-top:8px}
+.note b{color:var(--ink);font-weight:600}
 @media (max-width:620px){
   form.add.dep,form.add.rec{grid-template-columns:1fr 1fr}
   form.add.dep .lbl-in,form.add.rec .lbl-in{grid-column:1/-1}
@@ -104,6 +112,7 @@ form.add input,form.add select{min-width:0;padding:6px 8px;border-radius:8px;bor
 ul.list{list-style:none;margin:8px 0 0;padding:0;max-height:200px;overflow-y:auto}
 ul.list li{display:grid;grid-template-columns:48px 1fr auto auto;gap:8px;align-items:center;padding:0;border-top:1px solid var(--line)}
 ul.list li.rec-row{grid-template-columns:1fr auto auto auto;padding:4px 0}
+ul.list li.asking{display:block;padding:4px 0}
 .d{font-family:var(--mono);font-size:11px;color:var(--muted)}
 .edit{display:flex;align-items:center;gap:6px;min-width:0;padding:6px 4px;margin:0;border:0;background:none;text-align:left;cursor:pointer;border-radius:6px;overflow:hidden}
 .edit:hover{background:var(--soft)}
@@ -134,8 +143,8 @@ li.is-editing{background:var(--soft)}
   </header>
 
   <div class="sample" id="sample" hidden>
-    <span>Dépenses d'exemple pour te montrer le rendu.</span>
-    <button class="linkbtn" id="reset" type="button">Repartir de zéro</button>
+    <span id="sample-txt">Dépenses d'exemple pour te montrer le rendu.</span>
+    <span id="sample-act"></span>
   </div>
 
   <div>
@@ -163,7 +172,7 @@ li.is-editing{background:var(--soft)}
         <button class="btn" type="submit">Ajouter</button>
       </form>
       <div class="err" id="env-err" hidden></div>
-      <div class="note">Clique sur un nom ou un plafond pour le modifier. « Fixe » compte l'enveloppe en entier dès le 1er dans le rythme conseillé.</div>
+      <div class="note" id="plan-note"></div>
     </section>
 
     <section role="tabpanel" id="panel-depenses" data-panel="depenses" aria-labelledby="tab-depenses" hidden>
@@ -211,17 +220,19 @@ li.is-editing{background:var(--soft)}
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const daysIn = mk => new Date(+mk.slice(0, 4), +mk.slice(5, 7), 0).getDate();
   const money = v => Math.round((parseFloat(String(v).replace(/\s|€/g, '').replace(',', '.')) || 0) * 100) / 100;
+  const monthLabel = mk => fmtMonth.format(new Date(+mk.slice(0, 4), +mk.slice(5, 7) - 1, 1));
   const $ = id => document.getElementById(id);
 
   function seed(){
     const categories = [
-      {id: 'logement', name: 'Logement', limit: 750, fixed: true},
-      {id: 'courses', name: 'Courses', limit: 350, fixed: false},
-      {id: 'transports', name: 'Transports', limit: 90, fixed: false},
-      {id: 'sorties', name: 'Sorties', limit: 150, fixed: false},
-      {id: 'sante', name: 'Santé', limit: 50, fixed: false},
-      {id: 'divers', name: 'Divers', limit: 100, fixed: false}
+      {id: 'logement', name: 'Logement', fixed: true},
+      {id: 'courses', name: 'Courses', fixed: false},
+      {id: 'transports', name: 'Transports', fixed: false},
+      {id: 'sorties', name: 'Sorties', fixed: false},
+      {id: 'sante', name: 'Santé', fixed: false},
+      {id: 'divers', name: 'Divers', fixed: false}
     ];
+    const base = {logement: 750, courses: 350, transports: 90, sorties: 150, sante: 50, divers: 100};
     const recurring = [
       {id: 'r-loyer', label: 'Loyer', amount: 750, cat: 'logement', day: 1, from: thisMonth},
       {id: 'r-navigo', label: 'Pass Navigo', amount: 86.4, cat: 'transports', day: 1, from: thisMonth}
@@ -234,16 +245,33 @@ li.is-editing{background:var(--soft)}
     ];
     const expenses = rows.filter(r => r[0] <= today.getDate())
       .map(([d, label, amount, cat], i) => ({id: 's' + i, date: thisMonth + '-' + pad(d), label, amount, cat}));
-    return {sample: true, categories, expenses, recurring, skips: []};
+    return {sample: true, categories, base, plans: {}, expenses, recurring, skips: []};
   }
 
-  // Remet un état enregistré par une version précédente dans la forme attendue,
-  // sans jamais jeter une dépense ou une enveloppe qu'on arrive encore à lire.
+  // Relit un état enregistré par une version précédente sans jeter
+  // la moindre dépense ni la moindre enveloppe qu'on arrive encore à lire.
   function migrate(s){
     if (!s || !Array.isArray(s.categories) || !s.categories.length) return null;
+    const base = (s.base && typeof s.base === 'object') ? Object.assign({}, s.base) : {};
     s.categories = s.categories
       .filter(c => c && c.id != null)
-      .map(c => ({id: String(c.id), name: String(c.name == null ? 'Sans nom' : c.name), limit: +c.limit || 0, fixed: !!c.fixed}));
+      .map(c => {
+        const id = String(c.id);
+        // Avant cette version, le plafond vivait sur l'enveloppe : il devient le plafond par défaut.
+        if (c.limit != null && base[id] == null) base[id] = +c.limit || 0;
+        return {id, name: String(c.name == null ? 'Sans nom' : c.name), fixed: !!c.fixed};
+      });
+    s.base = base;
+    const plans = {};
+    if (s.plans && typeof s.plans === 'object'){
+      for (const mk of Object.keys(s.plans)){
+        if (!/^\d{4}-\d{2}$/.test(mk) || !s.plans[mk] || typeof s.plans[mk] !== 'object') continue;
+        const p = {};
+        for (const id of Object.keys(s.plans[mk])) p[String(id)] = +s.plans[mk][id] || 0;
+        plans[mk] = p;
+      }
+    }
+    s.plans = plans;
     s.expenses = (Array.isArray(s.expenses) ? s.expenses : [])
       .filter(e => e && e.id != null && typeof e.date === 'string' && e.date.length >= 7)
       .map(e => {
@@ -263,8 +291,8 @@ li.is-editing{background:var(--soft)}
   try {
     const raw = localStorage.getItem(KEY);
     if (raw){
-      // Filet de sécurité : copie de l'état tel qu'il était avant cette version.
-      try { if (!localStorage.getItem(KEY + '-avant-v2')) localStorage.setItem(KEY + '-avant-v2', raw); } catch (e) {}
+      // Filet de sécurité : copie de l'état tel qu'il était avant les plafonds par mois.
+      try { if (!localStorage.getItem(KEY + '-avant-v3')) localStorage.setItem(KEY + '-avant-v3', raw); } catch (e) {}
       state = migrate(JSON.parse(raw));
     }
   } catch (e) { state = null; }
@@ -272,12 +300,35 @@ li.is-editing{background:var(--soft)}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
 
   let view = new Date(today.getFullYear(), today.getMonth(), 1);
-  let editing = null;
+  let editing = null;       // id de la dépense en cours de correction
+  let pending = null;       // {type, id} : confirmation affichée dans la page
   let newFixed = false;
   let tab = 'rythme';
   try { tab = localStorage.getItem(KEY + '-onglet') || tab; } catch (e) {}
 
-  const catName = id => { const c = state.categories.find(x => x.id === id); return c ? c.name : 'Sans enveloppe'; };
+  const cat = id => state.categories.find(c => c.id === id);
+  const catName = id => { const c = cat(id); return c ? c.name : 'Sans enveloppe'; };
+
+  // Plafonds du mois : les siens, sinon ceux du même mois l'an dernier,
+  // sinon ceux du mois connu le plus proche, sinon les plafonds par défaut.
+  function planFor(mk){
+    if (state.plans[mk]) return {from: 'own', limits: state.plans[mk]};
+    const lastYear = (+mk.slice(0, 4) - 1) + '-' + mk.slice(5, 7);
+    if (state.plans[lastYear]) return {from: lastYear, limits: state.plans[lastYear]};
+    const keys = Object.keys(state.plans).sort();
+    const before = keys.filter(k => k < mk);
+    if (before.length) return {from: before[before.length - 1], limits: state.plans[before[before.length - 1]]};
+    if (keys.length) return {from: keys[0], limits: state.plans[keys[0]]};
+    return {from: 'base', limits: state.base};
+  }
+
+  // Donne au mois ses propres plafonds, recopiés de ceux dont il héritait.
+  function ownPlan(mk){
+    if (!state.plans[mk]) state.plans[mk] = Object.assign({}, planFor(mk).limits);
+    return state.plans[mk];
+  }
+
+  const planCats = limits => state.categories.filter(c => limits[c.id] != null);
 
   // Crée, pour le mois demandé, les dépenses récurrentes qui n'y sont pas encore.
   function materialize(mk){
@@ -296,16 +347,19 @@ li.is-editing{background:var(--soft)}
   function monthData(){
     const mk = monthKey(view);
     if (materialize(mk)) save();
+    const plan = planFor(mk);
+    const limits = plan.limits;
     const days = daysIn(mk);
     const exps = state.expenses.filter(e => e.date.slice(0, 7) === mk)
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-    const total = state.categories.reduce((s, c) => s + c.limit, 0);
-    const fixed = state.categories.filter(c => c.fixed).reduce((s, c) => s + c.limit, 0);
+    const cats = planCats(limits);
+    const total = cats.reduce((s, c) => s + (+limits[c.id] || 0), 0);
+    const fixed = cats.filter(c => c.fixed).reduce((s, c) => s + (+limits[c.id] || 0), 0);
     const spent = exps.reduce((s, e) => s + e.amount, 0);
     const isCurrent = mk === thisMonth;
     const isPast = mk < thisMonth;
     const dayNow = isCurrent ? today.getDate() : isPast ? days : 0;
-    return {mk, days, exps, total, fixed, spent, isCurrent, isPast, dayNow};
+    return {mk, days, exps, cats, limits, planFrom: plan.from, total, fixed, spent, isCurrent, isPast, dayNow};
   }
   const ideal = (m, d) => m.fixed + (m.total - m.fixed) * d / m.days;
 
@@ -364,51 +418,97 @@ li.is-editing{background:var(--soft)}
   }
 
   function renderEnvs(m){
-    $('envs').innerHTML = state.categories.map(c => {
+    const rows = m.cats.map(c => {
+      const limit = +m.limits[c.id] || 0;
       const spent = m.exps.filter(e => e.cat === c.id).reduce((s, e) => s + e.amount, 0);
-      const ratio = c.limit ? spent / c.limit : spent > 0 ? 2 : 0;
+      if (pending && pending.type === 'cat' && pending.id === c.id){
+        const used = m.exps.filter(e => e.cat === c.id).length;
+        if (used) return '<div class="env"><div class="ask info" style="grid-column:1/-1"><span class="txt">« ' + esc(c.name) + ' » porte ' + used + (used > 1 ? ' dépenses' : ' dépense') + ' ce mois-ci. Change' + (used > 1 ? '-les' : '-la') + ' d’enveloppe d’abord.</span><button type="button" class="mini no" data-no>Fermer</button></div></div>';
+        return '<div class="env"><div class="ask" style="grid-column:1/-1"><span class="txt">Retirer « ' + esc(c.name) + ' » de ' + monthLabel(m.mk) + ' ?</span><button type="button" class="mini" data-yescat="' + c.id + '">Retirer</button><button type="button" class="mini no" data-no>Annuler</button></div></div>';
+      }
+      const ratio = limit ? spent / limit : spent > 0 ? 2 : 0;
       const cls = ratio > 1.0001 ? 'bad' : ratio >= .9 ? 'warn' : '';
       return '<div class="env ' + cls + '">' +
         '<input class="nm" data-name="' + c.id + '" value="' + esc(c.name) + '" maxlength="30" aria-label="Nom de l’enveloppe ' + esc(c.name) + '">' +
         '<div class="gauge" role="progressbar" aria-label="' + esc(c.name) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(ratio * 100) + '"><b style="width:' + Math.min(100, ratio * 100) + '%"></b></div>' +
-        '<div class="amt num"><span class="spent">' + eur.format(spent) + '</span> / <input data-limit="' + c.id + '" type="number" min="0" step="10" value="' + c.limit + '" aria-label="Plafond ' + esc(c.name) + ' en euros"> €</div>' +
+        '<div class="amt num"><span class="spent">' + eur.format(spent) + '</span> / <input data-limit="' + c.id + '" type="number" min="0" step="10" value="' + limit + '" aria-label="Plafond ' + esc(c.name) + ' en euros pour ' + monthLabel(m.mk) + '"> €</div>' +
         '<button type="button" class="fix" data-fixed="' + c.id + '" aria-pressed="' + (c.fixed ? 'true' : 'false') + '" title="Compter cette enveloppe en entier dès le 1er">fixe</button>' +
-        '<button type="button" class="del" data-delcat="' + c.id + '" aria-label="Supprimer l’enveloppe ' + esc(c.name) + '">×</button>' +
+        '<button type="button" class="del" data-delcat="' + c.id + '" aria-label="Retirer ' + esc(c.name) + ' de ' + monthLabel(m.mk) + '">×</button>' +
       '</div>';
-    }).join('') || '<div class="empty" style="border:0">Aucune enveloppe. Ajoute-en une ci-dessous.</div>';
+    });
+
+    // Dépenses du mois rattachées à une enveloppe absente de ce mois-ci : jamais masquées.
+    const orphans = m.exps.filter(e => m.limits[e.cat] == null);
+    if (orphans.length){
+      const byCat = {};
+      orphans.forEach(e => { byCat[e.cat] = (byCat[e.cat] || 0) + e.amount; });
+      for (const id of Object.keys(byCat)){
+        rows.push('<div class="env orphan">' +
+          '<input class="nm" value="' + esc(catName(id)) + '" readonly aria-label="Enveloppe absente de ce mois">' +
+          '<div class="gauge"></div>' +
+          '<div class="amt num"><span class="spent">' + eur.format(byCat[id]) + '</span> / hors plan</div>' +
+          '<button type="button" class="fix" data-readd="' + id + '">remettre</button><span></span></div>');
+      }
+    }
+    $('envs').innerHTML = rows.join('') || '<div class="empty" style="border:0">Aucune enveloppe sur ce mois. Ajoute-en une ci-dessous.</div>';
+
+    const src = m.planFrom === 'own' ? '' : m.planFrom === 'base' ? 'Plafonds par défaut.' : 'Plafonds repris de ' + monthLabel(m.planFrom) + '.';
+    $('plan-note').innerHTML = (src ? '<b>' + src + '</b> ' : '') +
+      'Les plafonds valent pour <b>' + monthLabel(m.mk) + '</b> seulement : modifie-en un et ce mois aura les siens. Un mois sans plafonds reprend ceux du même mois l’an dernier, sinon ceux du mois connu le plus proche.';
   }
 
   function renderList(m){
     $('tab-depenses').textContent = 'Dépenses · ' + m.exps.length;
-    $('list').innerHTML = m.exps.length ? m.exps.map(e =>
-      '<li' + (editing === e.id ? ' class="is-editing"' : '') + '>' +
-      '<span class="d">' + fmtDay.format(new Date(e.date + 'T00:00')).replace('.', '') + '</span>' +
-      '<button type="button" class="edit" data-edit="' + e.id + '" aria-label="Modifier ' + esc(e.label) + '">' +
-        '<span class="lb">' + esc(e.label) + '</span>' +
-        '<span class="chip">' + esc(catName(e.cat)) + '</span>' +
-        (e.rec ? '<span class="chip loop" title="Créée automatiquement chaque mois">↻</span>' : '') +
-      '</button>' +
-      '<span class="num">' + eur.format(e.amount) + '</span>' +
-      '<button type="button" class="del" data-del="' + e.id + '" aria-label="Supprimer ' + esc(e.label) + '">×</button></li>'
-    ).join('') : '<li class="empty">Rien pour l’instant. Ajoute ta première dépense au-dessus.</li>';
+    $('list').innerHTML = m.exps.length ? m.exps.map(e => {
+      if (pending && pending.type === 'exp' && pending.id === e.id){
+        return '<li class="asking"><div class="ask"><span class="txt">' +
+          (e.rec ? 'Supprimer « ' + esc(e.label) + ' » pour ' + monthLabel(m.mk) + ' seulement ? Elle reviendra le mois suivant.' : 'Supprimer « ' + esc(e.label) + ' » ?') +
+          '</span><button type="button" class="mini" data-yesexp="' + e.id + '">Supprimer</button><button type="button" class="mini no" data-no>Annuler</button></div></li>';
+      }
+      return '<li' + (editing === e.id ? ' class="is-editing"' : '') + '>' +
+        '<span class="d">' + fmtDay.format(new Date(e.date + 'T00:00')).replace('.', '') + '</span>' +
+        '<button type="button" class="edit" data-edit="' + e.id + '" aria-label="Modifier ' + esc(e.label) + '">' +
+          '<span class="lb">' + esc(e.label) + '</span>' +
+          '<span class="chip">' + esc(catName(e.cat)) + '</span>' +
+          (e.rec ? '<span class="chip loop" title="Créée automatiquement chaque mois">↻</span>' : '') +
+        '</button>' +
+        '<span class="num">' + eur.format(e.amount) + '</span>' +
+        '<button type="button" class="del" data-del="' + e.id + '" aria-label="Supprimer ' + esc(e.label) + '">×</button></li>';
+    }).join('') : '<li class="empty">Rien pour l’instant. Ajoute ta première dépense au-dessus.</li>';
   }
 
   function renderRec(){
-    $('rec-list').innerHTML = state.recurring.length ? state.recurring.map(r =>
-      '<li class="rec-row"><span class="lb">' + esc(r.label) + ' <span class="chip">' + esc(catName(r.cat)) + '</span></span>' +
-      '<span class="d">le ' + r.day + '</span>' +
-      '<span class="num">' + eur.format(r.amount) + '</span>' +
-      '<button type="button" class="del" data-delrec="' + r.id + '" aria-label="Ne plus créer ' + esc(r.label) + '">×</button></li>'
-    ).join('') : '<li class="empty">Aucune dépense automatique. Ajoute-en une au-dessus, par exemple ton loyer.</li>';
+    $('rec-list').innerHTML = state.recurring.length ? state.recurring.map(r => {
+      if (pending && pending.type === 'rec' && pending.id === r.id){
+        return '<li class="asking"><div class="ask"><span class="txt">Ne plus créer « ' + esc(r.label) + ' » automatiquement ? Les dépenses déjà créées sont conservées.</span>' +
+          '<button type="button" class="mini" data-yesrec="' + r.id + '">Arrêter</button><button type="button" class="mini no" data-no>Annuler</button></div></li>';
+      }
+      return '<li class="rec-row"><span class="lb">' + esc(r.label) + ' <span class="chip">' + esc(catName(r.cat)) + '</span></span>' +
+        '<span class="d">le ' + r.day + '</span>' +
+        '<span class="num">' + eur.format(r.amount) + '</span>' +
+        '<button type="button" class="del" data-delrec="' + r.id + '" aria-label="Ne plus créer ' + esc(r.label) + '">×</button></li>';
+    }).join('') : '<li class="empty">Aucune dépense automatique. Ajoute-en une au-dessus, par exemple ton loyer.</li>';
   }
 
-  function renderCatOptions(){
-    const opts = state.categories.map(c => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('');
+  function renderCatOptions(m){
+    const opts = m.cats.map(c => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('');
     for (const id of ['f-cat', 'r-cat']){
       const sel = $(id), keep = sel.value;
       sel.innerHTML = opts;
-      if (state.categories.some(c => c.id === keep)) sel.value = keep;
-      else if (state.categories.length) sel.value = state.categories[0].id;
+      if (m.cats.some(c => c.id === keep)) sel.value = keep;
+      else if (m.cats.length) sel.value = m.cats[0].id;
+    }
+  }
+
+  function renderSample(){
+    $('sample').hidden = !state.sample;
+    if (!state.sample) return;
+    if (pending && pending.type === 'reset'){
+      $('sample-txt').textContent = 'Effacer les dépenses d’exemple ? Tes enveloppes et tes dépenses automatiques restent en place.';
+      $('sample-act').innerHTML = '<button type="button" class="mini" data-yesreset>Effacer</button> <button type="button" class="mini no" data-no>Annuler</button>';
+    } else {
+      $('sample-txt').textContent = 'Dépenses d’exemple pour te montrer le rendu.';
+      $('sample-act').innerHTML = '<button type="button" class="linkbtn" data-reset>Repartir de zéro</button>';
     }
   }
 
@@ -431,16 +531,22 @@ li.is-editing{background:var(--soft)}
   function render(){
     const m = monthData();
     $('month-title').textContent = fmtMonth.format(view);
-    $('sample').hidden = !state.sample;
-    renderCatOptions();
+    renderSample();
+    renderCatOptions(m);
     renderSummary(m); renderChart(m); renderEnvs(m); renderList(m); renderRec();
   }
+
+  // Un clic « Annuler » ferme n'importe quelle confirmation en cours.
+  document.addEventListener('click', ev => {
+    if (ev.target.closest('[data-no]')){ pending = null; render(); }
+  });
 
   // --- Dépenses ---------------------------------------------------------
   $('add-form').addEventListener('submit', ev => {
     ev.preventDefault();
+    const m = monthData();
     const label = $('f-label').value.trim(), amount = money($('f-amount').value), date = $('f-date').value, err = $('err');
-    const problem = !state.categories.length ? 'Crée d’abord une enveloppe.'
+    const problem = !m.cats.length ? 'Crée d’abord une enveloppe pour ce mois.'
       : !label ? 'Donne un libellé à la dépense.'
       : !(amount > 0) ? 'Saisis un montant positif, ex. 12,50.'
       : !date ? 'Choisis une date.' : '';
@@ -454,22 +560,33 @@ li.is-editing{background:var(--soft)}
     }
     const parts = date.split('-');
     view = new Date(+parts[0], +parts[1] - 1, 1);
-    stopEdit(); save(); render(); $('f-label').focus();
+    pending = null; stopEdit(); save(); render(); $('f-label').focus();
   });
 
   $('f-cancel').addEventListener('click', () => { stopEdit(); render(); });
 
   $('list').addEventListener('click', ev => {
+    const yes = ev.target.closest('[data-yesexp]');
+    if (yes){
+      const e = state.expenses.find(x => x.id === yes.dataset.yesexp);
+      if (e){
+        if (e.rec) state.skips.push(e.rec + '|' + e.date.slice(0, 7));
+        state.expenses = state.expenses.filter(x => x.id !== e.id);
+        if (editing === e.id) stopEdit();
+      }
+      pending = null; save(); render();
+      return;
+    }
     const ed = ev.target.closest('[data-edit]');
     if (ed){
       const e = state.expenses.find(x => x.id === ed.dataset.edit);
       if (!e) return;
-      editing = e.id;
-      renderList(monthData());
+      editing = e.id; pending = null;
+      render();
       $('f-label').value = e.label;
       $('f-amount').value = e.amount.toFixed(2).replace('.', ',');
       $('f-date').value = e.date;
-      if (state.categories.some(c => c.id === e.cat)) $('f-cat').value = e.cat;
+      if (state.categories.some(c => c.id === e.cat) && $('f-cat').querySelector('[value="' + e.cat + '"]')) $('f-cat').value = e.cat;
       $('f-submit').textContent = 'Enregistrer';
       $('f-cancel').hidden = false;
       $('err').hidden = true;
@@ -477,58 +594,49 @@ li.is-editing{background:var(--soft)}
       return;
     }
     const b = ev.target.closest('[data-del]');
-    if (!b) return;
-    const e = state.expenses.find(x => x.id === b.dataset.del);
-    if (!e) return;
-    if (e.rec && !confirm('Supprimer « ' + e.label + ' » pour ce mois seulement ?\n\nElle sera recréée le mois prochain.')) return;
-    if (e.rec) state.skips.push(e.rec + '|' + e.date.slice(0, 7));
-    state.expenses = state.expenses.filter(x => x.id !== e.id);
-    if (editing === e.id) stopEdit();
-    save(); render();
+    if (b){ pending = {type: 'exp', id: b.dataset.del}; render(); }
   });
 
   // --- Enveloppes -------------------------------------------------------
   $('envs').addEventListener('change', ev => {
+    const mk = monthKey(view);
     const lim = ev.target.closest('[data-limit]');
     if (lim){
-      const c = state.categories.find(x => x.id === lim.dataset.limit);
-      if (c){ c.limit = Math.max(0, +lim.value || 0); save(); render(); }
+      ownPlan(mk)[lim.dataset.limit] = Math.max(0, +lim.value || 0);
+      save(); render();
       return;
     }
     const nm = ev.target.closest('[data-name]');
     if (nm){
-      const c = state.categories.find(x => x.id === nm.dataset.name);
+      const c = cat(nm.dataset.name);
       const v = nm.value.trim();
       if (c){ c.name = v || c.name; save(); render(); }
     }
   });
 
   $('envs').addEventListener('click', ev => {
+    const mk = monthKey(view);
+    const yes = ev.target.closest('[data-yescat]');
+    if (yes){
+      delete ownPlan(mk)[yes.dataset.yescat];
+      pending = null; save(); render();
+      return;
+    }
+    const re = ev.target.closest('[data-readd]');
+    if (re){
+      const id = re.dataset.readd;
+      ownPlan(mk)[id] = +planFor(mk).limits[id] || +state.base[id] || 0;
+      save(); render();
+      return;
+    }
     const fx = ev.target.closest('[data-fixed]');
     if (fx){
-      const c = state.categories.find(x => x.id === fx.dataset.fixed);
+      const c = cat(fx.dataset.fixed);
       if (c){ c.fixed = !c.fixed; save(); render(); }
       return;
     }
     const dl = ev.target.closest('[data-delcat]');
-    if (!dl) return;
-    const c = state.categories.find(x => x.id === dl.dataset.delcat);
-    if (!c) return;
-    const used = state.expenses.filter(e => e.cat === c.id).length;
-    const rec = state.recurring.filter(r => r.cat === c.id).length;
-    if (used || rec){
-      const parts = [];
-      if (used) parts.push(used + (used > 1 ? ' dépenses' : ' dépense'));
-      if (rec) parts.push(rec + (rec > 1 ? ' dépenses automatiques' : ' dépense automatique'));
-      const plural = used + rec > 1;
-      alert('« ' + c.name + ' » ne peut pas être supprimée : ' + parts.join(' et ') +
-        (plural ? ' y sont rattachées.' : ' y est rattachée.') +
-        '\n\nChange' + (plural ? '-les' : '-la') + ' d’enveloppe d’abord, pour ne rien perdre.');
-      return;
-    }
-    if (!confirm('Supprimer l’enveloppe « ' + c.name + ' » ?')) return;
-    state.categories = state.categories.filter(x => x.id !== c.id);
-    save(); render();
+    if (dl){ pending = {type: 'cat', id: dl.dataset.delcat}; render(); }
   });
 
   $('e-fixed').addEventListener('click', () => {
@@ -538,50 +646,61 @@ li.is-editing{background:var(--soft)}
 
   $('env-form').addEventListener('submit', ev => {
     ev.preventDefault();
+    const mk = monthKey(view);
     const name = $('e-name').value.trim(), limit = money($('e-limit').value), err = $('env-err');
+    const plan = planFor(mk).limits;
+    const jumelle = state.categories.find(c => c.name.toLowerCase() === name.toLowerCase());
     const problem = !name ? 'Donne un nom à l’enveloppe.'
-      : state.categories.some(c => c.name.toLowerCase() === name.toLowerCase()) ? 'Une enveloppe porte déjà ce nom.' : '';
+      : (jumelle && plan[jumelle.id] != null) ? 'Une enveloppe porte déjà ce nom ce mois-ci.' : '';
     err.hidden = !problem; err.textContent = problem;
     if (problem) return;
-    state.categories.push({id: uid(), name, limit: Math.max(0, limit), fixed: newFixed});
+    // Un nom déjà connu reprend la même enveloppe : les dépenses des autres mois restent liées.
+    const id = jumelle ? jumelle.id : uid();
+    if (!jumelle) state.categories.push({id, name, fixed: newFixed});
+    ownPlan(mk)[id] = Math.max(0, limit);
     $('e-name').value = ''; $('e-limit').value = '';
     newFixed = false; $('e-fixed').setAttribute('aria-pressed', 'false');
-    save(); render(); $('e-name').focus();
+    pending = null; save(); render(); $('e-name').focus();
   });
 
   // --- Chaque mois ------------------------------------------------------
   $('rec-form').addEventListener('submit', ev => {
     ev.preventDefault();
+    const m = monthData();
     const label = $('r-label').value.trim(), amount = money($('r-amount').value);
     const day = Math.min(31, Math.max(1, Math.round(+$('r-day').value) || 1)), err = $('rec-err');
-    const problem = !state.categories.length ? 'Crée d’abord une enveloppe.'
+    const problem = !m.cats.length ? 'Crée d’abord une enveloppe pour ce mois.'
       : !label ? 'Donne un libellé.'
       : !(amount > 0) ? 'Saisis un montant positif, ex. 12,50.' : '';
     err.hidden = !problem; err.textContent = problem;
     if (problem) return;
     state.recurring.push({id: uid(), label, amount, cat: $('r-cat').value, day, from: thisMonth});
     $('r-label').value = ''; $('r-amount').value = ''; $('r-day').value = '1';
-    save(); render(); $('r-label').focus();
+    pending = null; save(); render(); $('r-label').focus();
   });
 
   $('rec-list').addEventListener('click', ev => {
+    const yes = ev.target.closest('[data-yesrec]');
+    if (yes){
+      state.recurring = state.recurring.filter(x => x.id !== yes.dataset.yesrec);
+      pending = null; save(); render();
+      return;
+    }
     const b = ev.target.closest('[data-delrec]');
-    if (!b) return;
-    const r = state.recurring.find(x => x.id === b.dataset.delrec);
-    if (!r) return;
-    if (!confirm('Ne plus créer « ' + r.label + ' » automatiquement ?\n\nLes dépenses déjà créées sont conservées.')) return;
-    state.recurring = state.recurring.filter(x => x.id !== r.id);
-    save(); render();
+    if (b){ pending = {type: 'rec', id: b.dataset.delrec}; render(); }
   });
 
   // --- Navigation -------------------------------------------------------
   document.querySelector('.tabs').addEventListener('click', ev => { const b = ev.target.closest('.tab'); if (b) showTab(b.dataset.tab); });
-  $('prev').addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); stopEdit(); render(); });
-  $('next').addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); stopEdit(); render(); });
-  $('reset').addEventListener('click', () => {
-    if (!confirm('Effacer les dépenses d’exemple ?\n\nTes enveloppes et tes dépenses automatiques restent en place.')) return;
-    state.expenses = []; state.skips = []; state.sample = false;
-    stopEdit(); save(); render();
+  $('prev').addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); pending = null; stopEdit(); render(); });
+  $('next').addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); pending = null; stopEdit(); render(); });
+
+  $('sample').addEventListener('click', ev => {
+    if (ev.target.closest('[data-reset]')){ pending = {type: 'reset'}; render(); return; }
+    if (ev.target.closest('[data-yesreset]')){
+      state.expenses = []; state.skips = []; state.sample = false;
+      pending = null; stopEdit(); save(); render();
+    }
   });
 
   stopEdit();
